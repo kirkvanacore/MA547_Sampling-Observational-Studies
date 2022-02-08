@@ -1,0 +1,189 @@
+---
+title: "HW3comp"
+author: "Kirk Vanacore"
+date: "2/3/2022"
+output:
+  html_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r, include=FALSE, echo=FALSE }
+library(SDAResources)
+library(dplyr)
+library(psych)
+library(survey)
+library(sampling)
+library(SDAResources)
+data("healthjournals")
+```
+# 6. 
+## a. Using minimal variance allocation: 
+* 217 house units, 
+* 559 apartment units, 
+* 124 condominium units. 
+ 
+ [ADD IMAGE OF WORK HERE]
+
+
+## b. 
+
+P for the population is .3333. 
+
+[ADD IMAGE HERE]
+
+The gain the stratified sample offers overs simple random sampling is .9622.
+
+[ADD IMAGE HERE]
+
+
+# 12
+## a. What is the sampleing weight for each stratum? 
+```{r}
+colnames(healthjournals)
+table(healthjournals$journal)
+
+# AJH
+AJPHweight<-280/100
+AJPHweight
+AJPMweight<-103/38
+AJPMweight
+PMweight<-164/60
+PMweight
+
+healthjournals$weights <- ifelse(healthjournals$journal == "AJPH", AJPHweight,
+                                 ifelse(healthjournals$journal == "AJPM", AJPMweight,
+                                      PMweight  
+                                 )
+                                 )
+
+```
+What type of allocation was used?
+This is an example of proprtional allocation. 
+
+## b. When should the fpc be used for anaylsis of this data?
+When calculating the variance, which will affect the SD, SE and CIs.
+
+## c. Estimate the percentage of atricles that used: 
+```{r}
+# recode variables 
+table(healthjournals$journal)
+table(healthjournals$ConfInt, healthjournals$HypTest)
+
+ healthjournals$ConfInt_ONLY <- ifelse(
+   healthjournals$ConfInt == "Yes" & healthjournals$HypTest == "No", 1, 0 
+ )
+table(healthjournals$ConfInt_ONLY, healthjournals$ConfInt, healthjournals$HypTest)
+ healthjournals$HypTest_ONLY <- ifelse(
+   healthjournals$ConfInt == "No" & healthjournals$HypTest == "Yes", 1, 0 
+ )
+ table(healthjournals$HypTest_ONLY, healthjournals$ConfInt, healthjournals$HypTest)
+table(healthjournals$ConfInt_ONLY, healthjournals$ConfInt, healthjournals$HypTest)
+ healthjournals$BOTH <- ifelse(
+   healthjournals$ConfInt == "Yes" & healthjournals$HypTest == "Yes", 1, 0 
+ )
+ table(healthjournals$BOTH, healthjournals$ConfInt, healthjournals$HypTest)
+
+ healthjournals$NEITHER <- ifelse(
+   healthjournals$ConfInt == "No" & healthjournals$HypTest == "No", 1, 0 
+ )
+ 
+# # unnecessarily complicated way of getting the answers:
+# proportions <- healthjournals %>%
+#   dplyr::summarise(pre_ConfInt_ONLY = (mean(ConfInt_ONLY)*sum(weights))/sum(weights),
+# 
+#                    pre_HypTest_ONLY = (mean(HypTest_ONLY)*sum(weights))/sum(weights),
+#                    pre_BOTH = (mean(BOTH)*sum(weights))/sum(weights),
+#                    pre_NEITHER = (mean(NEITHER)*sum(weights))/sum(weights),
+#                    total = pre_ConfInt_ONLY +pre_HypTest_ONLY+pre_BOTH+pre_NEITHER
+#                    )
+#   proportions
+
+  
+### from _R Companion for Sampling_ pg 34
+
+ # popsize_recode gives popsize for each stratum
+popsize_recode <- c('AJPH' = 280, 'AJPM' = 103, 'PM' = 164)
+# next statement substitutes 1054 for each 'NC', 220 for 'NE', etc.
+healthjournals$popsize <- popsize_recode[healthjournals$journal]
+table(healthjournals$popsize) #check the new variable
+
+# input design information for svydesign
+dstr <-
+  svydesign(
+    id = ~ 1,
+    strata = ~ journal,
+    weights = ~ weights,
+    fpc = ~ popsize,
+    data = healthjournals
+  )
+```
+### i. Confidence Intervals Only 
+```{r}
+per_ConfInt_ONLY<-svymean(~ConfInt_ONLY, dstr)
+per_ConfInt_ONLY
+confint(per_ConfInt_ONLY, level=.95, df=degf(dstr))
+```
+### ii. Hypothysis Tests Only
+```{r}
+pre_HypTest_ONLY<-svymean(~HypTest_ONLY, dstr)
+pre_HypTest_ONLY
+confint(pre_HypTest_ONLY, level=.95, df=degf(dstr))
+```
+### iii. Both
+```{r}
+pre_BOTH<-svymean(~BOTH, dstr)
+pre_BOTH
+confint(pre_BOTH, level=.95, df=degf(dstr))
+```
+### iv. Neither
+```{r}
+pre_NEITHER<-svymean(~NEITHER, dstr)
+pre_NEITHER
+confint(pre_NEITHER, level=.95, df=degf(dstr))
+```
+
+## d. Mean and CI for number of authors
+
+```{r}
+
+mean_num_authors <-svymean(~NumAuthors, dstr)
+mean_num_authors
+confint(mean_num_authors, level=.95, df=degf(dstr))
+```
+
+## e. Estmate % and Total aritcles with neither random selection nor assignment
+```{r}
+table(healthjournals$RandomSel, 
+      healthjournals$RandomAssn)
+healthjournals$Random_NEITHER <- ifelse(
+  healthjournals$RandomSel == "No" 
+  & healthjournals$RandomAssn == "No",1, 0)
+
+# need to run this again because I added a variable to healthjournals
+  dstr <-
+  svydesign(
+    id = ~ 1,
+    strata = ~ journal,
+    weights = ~ weights,
+    fpc = ~ popsize,
+    data = healthjournals
+  )
+
+pre_NEITHER<-svymean(~Random_NEITHER, dstr)
+pre_NEITHER
+confint(pre_NEITHER, level=.95, df=degf(dstr))
+
+total_NEITHER <-svytotal(~Random_NEITHER, dstr)
+total_NEITHER
+confint(total_NEITHER, level=.95, df=degf(dstr))
+```
+
+## f. Are these estimates for all public health journals?
+No, these findings do not apply to all public health research articles, they only apply to the the journals from which the samples were drawn. To estimate statistics for all public health journals, the researchers could have taken articles from sample of all public health journals. 
+
+
